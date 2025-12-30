@@ -55,85 +55,96 @@
 
 ```mermaid
 flowchart LR
-  %% Client
-  subgraph C[Client (Website / Widget)]
-    U[User]
-    UI[Chat UI]
-    STT[Browser STT (optional)]
-    IMG[Image Upload]
+  %% Client Layer
+  subgraph Client["Client - Website Widget"]
+    User["👤 User"]
+    ChatUI["💬 Chat UI"]
+    STT["🎤 Browser STT"]
+    Upload["📷 Image Upload"]
   end
 
-  %% API
-  subgraph A[FastAPI Backend]
-    R[Router / Middleware (CORS)]
-    S[Session Manager (Redis)]
-    CH[/POST /chat/]
-    AI[/POST /api/analyze-image/]
-    TTS[/POST /api/tts/]
+  %% API Layer
+  subgraph API["FastAPI Backend"]
+    Router["Router & CORS"]
+    Session["Session Manager"]
+    ChatEP["POST /chat"]
+    ImageEP["POST /api/analyze-image"]
+    TTSEP["POST /api/tts"]
   end
 
-  %% Knowledge Retrieval
-  subgraph RAG[Knowledge Retrieval]
-    EMB[Cohere Embeddings]
-    PG[PGVector (Supabase)]
-    RET[Retriever]
+  %% Knowledge Layer
+  subgraph Knowledge["Knowledge Retrieval"]
+    Embeddings["Cohere Embeddings"]
+    Vector["PGVector Search"]
+    Retriever["Document Retriever"]
   end
 
-  %% Reasoning
-  subgraph LLM[Reasoning]
-    G[Groq - Llama 3.3 70B]
+  %% LLM Layer
+  subgraph Reasoning["Reasoning Engine"]
+    LLM["Groq Llama 3.3 70B"]
   end
 
-  %% Vision
-  subgraph V[Vision]
-    Y[YOLOv8 Detector]
+  %% Vision Layer
+  subgraph Vision["Vision Module"]
+    YOLO["YOLOv8 Detector"]
   end
 
-  %% Voice
-  subgraph VOICE[Voice]
-    GTTS[gTTS - MP3]
+  %% Voice Layer
+  subgraph Voice["Voice Output"]
+    TTS["gTTS - MP3 Stream"]
   end
 
-  %% Flows from client
-  U --> UI
-  UI -- text --> CH
-  STT -- transcribed text --> CH
-  IMG -- base64 image --> AI
+  %% Data Storage
+  subgraph Storage["Data Storage"]
+    Supabase["Supabase PostgreSQL"]
+    Redis["Redis Cache"]
+  end
 
-  %% Chat pipeline
-  CH <--> S
-  CH --> RET
-  CH -. embed query .-> EMB
-  EMB -. vector search .-> PG
-  PG --> RET
-  RET --> G
+  %% Client to API
+  User --> ChatUI
+  ChatUI -->|Text Query| ChatEP
+  STT -->|Transcribed Text| ChatEP
+  Upload -->|Base64 Image| ImageEP
 
-  %% Image pipeline
-  AI --> Y
-  Y --> G
+  %% API to Storage
+  ChatEP <-->|Session| Session
+  Session <-->|Cache| Redis
 
-  %% Responses
-  G --> UI
-  G --> TTS
-  TTS --> UI
+  %% Chat Pipeline
+  ChatEP --> Retriever
+  Retriever -->|Query| Embeddings
+  Embeddings -->|Vector Search| Vector
+  Vector -->|Retrieved Docs| Supabase
+  Supabase --> Retriever
+  Retriever -->|Context| LLM
+
+  %% Image Pipeline
+  ImageEP --> YOLO
+  YOLO -->|Pest Info| LLM
+
+  %% Response Pipeline
+  LLM -->|Response| ChatUI
+  LLM -->|Text| TTS
+  TTS -->|Audio| ChatUI
 
   %% Styling
-  classDef client fill:#e8f4ff,stroke:#007bff,stroke-width:1px,rx:6,ry:6;
-  classDef api fill:#fff8e1,stroke:#ff9800,stroke-width:1px,rx:6,ry:6;
-  classDef rag fill:#f3e5f5,stroke:#9c27b0,stroke-width:1px,rx:6,ry:6;
-  classDef llm fill:#e8f5e9,stroke:#43a047,stroke-width:1px,rx:6,ry:6;
-  classDef vision fill:#ffebee,stroke:#e53935,stroke-width:1px,rx:6,ry:6;
-  classDef voice fill:#e0f7fa,stroke:#00acc1,stroke-width:1px,rx:6,ry:6;
-  class UI,U,STT,IMG client;
-  class R,S,CH,AI,TTS api;
-  class EMB,PG,RET rag;
-  class G llm;
-  class Y vision;
-  class GTTS voice;
-```
+  classDef clientStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:2px;
+  classDef apiStyle fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+  classDef ragStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+  classDef llmStyle fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+  classDef visionStyle fill:#ffebee,stroke:#c62828,stroke-width:2px;
+  classDef voiceStyle fill:#e0f2f1,stroke:#00796b,stroke-width:2px;
+  classDef storageStyle fill:#fce4ec,stroke:#c2185b,stroke-width:2px;
+
+  class User,ChatUI,STT,Upload clientStyle;
+  class Router,Session,ChatEP,ImageEP,TTSEP apiStyle;
+  class Embeddings,Vector,Retriever ragStyle;
+  class LLM llmStyle;
+  class YOLO visionStyle;
+  class TTS voiceStyle;
+  class Supabase,Redis storageStyle;
 
 ---
-
 ## 📊 Performance Metrics
 
 | Metric | Value |
