@@ -1,6 +1,6 @@
 # 🤖 Eastern Services AI Chatbot - Multilingual Pest Control Assistant
 
-[![Live Demo](https://img.shields.io/badge/Live-Demo-success?style=for-the-badge)](https://raja3134802-eastern-services-chatbot.hf.space)
+[![Live Demo](https://img.shields.io/badge/Live-Demo-success?style=for-the-badge)](https://huggingface.co/spaces/raja3134802/eastern-services-api)
 [![Python](https://img.shields.io/badge/Python-3.10-blue?style=for-the-badge&logo=python)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-00FFFF?style=for-the-badge)](https://github.com/ultralytics/ultralytics)
@@ -143,6 +143,7 @@ flowchart LR
   class YOLO visionStyle;
   class TTS voiceStyle;
   class Supabase,Redis storageStyle;
+```
 
 ---
 ## 📊 Performance Metrics
@@ -348,7 +349,7 @@ curl -X POST http://localhost:7860/api/analyze-image \
 
 ### **Production Deployment**
 - **Platform:** [Hugging Face Spaces](https://huggingface.co/spaces/raja3134802/eastern-services-chatbot)
-- **Live URL:** [https://raja3134802-eastern-services-chatbot.hf.space](https://raja3134802-eastern-services-chatbot.hf.space)
+- **Live URL:** [https://huggingface.co/spaces/raja3134802/eastern-services-api](https://huggingface.co/spaces/raja3134802/eastern-services-api)
 - **Container:** Docker (custom Dockerfile)
 - **Uptime:** 99.5% availability
 - **Auto-scaling:** Managed by Hugging Face infrastructure
@@ -375,7 +376,7 @@ docker run -p 7860:7860 --env-file .env eastern-chatbot
 3. Add secrets in Settings
 4. Space auto-deploys
 
-**Live Demo:** [https://raja3134802-eastern-services-chatbot.hf.space](https://raja3134802-eastern-services-chatbot.hf.space)
+**Live Demo:** [https://huggingface.co/spaces/raja3134802/eastern-services-api](https://huggingface.co/spaces/raja3134802/eastern-services-api)
 
 **Deployment Guide:** [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
 
@@ -452,6 +453,6 @@ If you found this project helpful, please give it a ⭐️!
 
 **Built with ❤️ using FastAPI, YOLOv8, and Groq**
 
-[Live Demo](https://raja3134802-eastern-services-chatbot.hf.space) • [Documentation](docs/) • [Report Bug](https://github.com/abdullahnaseem4802-dot/eastern-services-chatbot/issues)
+[Live Demo](https://huggingface.co/spaces/raja3134802/eastern-services-api) • [Documentation](docs/) • [Report Bug](https://github.com/abdullahnaseem4802-dot/eastern-services-chatbot/issues)
 
 </div>
