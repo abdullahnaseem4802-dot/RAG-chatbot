@@ -175,7 +175,7 @@ Redis
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/abdullahnaseem4802-dot/eastern-services-chatbot.git
+git clone https://github.com/abdullahnaseem4802-dot/RAG-chatbot.git
 cd eastern-services-chatbot
 ```
 
@@ -348,7 +348,7 @@ curl -X POST http://localhost:7860/api/analyze-image \
 **This project is deployed and live on Hugging Face Spaces!**
 
 ### **Production Deployment**
-- **Platform:** [Hugging Face Spaces](https://huggingface.co/spaces/raja3134802/eastern-services-chatbot)
+- **Platform:** [Hugging Face Spaces](https://huggingface.co/spaces/raja3134802/eastern-services-api)
 - **Live URL:** [https://huggingface.co/spaces/raja3134802/eastern-services-api](https://huggingface.co/spaces/raja3134802/eastern-services-api)
 - **Container:** Docker (custom Dockerfile)
 - **Uptime:** 99.5% availability
@@ -417,9 +417,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Abdullah Naseem**
 
 - GitHub: [@abdullahnaseem4802-dot](https://github.com/abdullahnaseem4802-dot)
-- LinkedIn: [Your LinkedIn Profile](YOUR_LINKEDIN_URL)
+- LinkedIn: [Your LinkedIn Profile](https://www.linkedin.com/in/abdullah-naseem-78166b314/)
 - Email: abdullahnaseem4802@gmail.com
-- Portfolio: [Your Portfolio Website](YOUR_PORTFOLIO_URL)
+
 
 ---
 
@@ -437,10 +437,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For questions, issues, or collaboration opportunities:
 
-- **Email:** your.email@example.com
-- **LinkedIn:** [Your LinkedIn](YOUR_LINKEDIN_URL)
-- **GitHub Issues:** [Report a bug](https://github.com/YOUR_USERNAME/eastern-services-chatbot/issues)
-
+- **Email:** abdullahnaseem655@gmail.com
 ---
 
 ## ⭐ Show Your Support
