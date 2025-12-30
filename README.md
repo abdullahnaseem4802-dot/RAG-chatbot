@@ -176,7 +176,7 @@ Redis
 1. **Clone the repository**
 ```bash
 git clone https://github.com/abdullahnaseem4802-dot/RAG-chatbot.git
-cd eastern-services-chatbot
+cd RAG-chatbot
 ```
 
 2. **Install dependencies**
