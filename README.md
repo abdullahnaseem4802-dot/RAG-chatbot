@@ -44,7 +44,7 @@
 
 ### 🛠️ **Technical Stack**
 - **Backend:** FastAPI, Python 3.10
-- **AI/ML:** YOLOv8, Groq LLM (Llama 3.3 70B), Cohere Embeddings
+- **AI/ML:** YOLOv8, Groq LLM (Llama 3.3 70B), Sentence Transformers (HuggingFace)
 - **Database:** Supabase (PostgreSQL + PGVector), Redis
 - **Deployment:** Docker, Hugging Face Spaces
 - **Frontend:** HTML, CSS, JavaScript (separate repository)
@@ -74,7 +74,7 @@ flowchart LR
 
   %% Knowledge Layer
   subgraph Knowledge["Knowledge Retrieval"]
-    Embeddings["Cohere Embeddings"]
+    Embeddings["Sentence Transformer"]
     Vector["PGVector Search"]
     Retriever["Document Retriever"]
   end
@@ -209,7 +209,7 @@ Create a `.env` file with the following:
 ```env
 # AI/ML APIs
 GROQ_API_KEY=your_groq_api_key
-COHERE_API_KEY=your_cohere_api_key
+COHERE_API_KEY=your_cohere_api_key  # Optional backup
 
 # Databases
 SUPABASE_URI=postgresql://user:password@host:port/database
@@ -221,9 +221,9 @@ REPLICATE_API_TOKEN=your_replicate_token
 
 **Get API Keys:**
 - [Groq](https://console.groq.com/) - Free tier available
-- [Cohere](https://dashboard.cohere.com/) - Free tier available
 - [Supabase](https://supabase.com/) - Free tier available
 - [Upstash Redis](https://upstash.com/) - Free tier available
+- [Cohere](https://dashboard.cohere.com/) - Optional backup (not required)
 
 ---
 
@@ -287,8 +287,10 @@ Roman Punjabi: "Tusi or keri keri service provide karday o?"
 - **Treatment recommendations** based on detection results
 
 ### **3. RAG Knowledge Base**
-- **67 documents** embedded with Cohere (embed-english-v3.0)
+- **26 documents** embedded with Sentence Transformers (all-MiniLM-L6-v2)
+- **384-dimensional vectors** - FREE, NO RATE LIMITS (runs locally)
 - **Semantic search** with PGVector (PostgreSQL extension)
+- **Keyword re-ranking** for improved Urdu/Roman Urdu queries
 - **Context-aware responses** with 95%+ retrieval accuracy
 - **Domain knowledge:** Pricing, guarantees, treatment methods, service areas
 - **Client:** [Eastern Services Pest Control](https://easternservices.pk/)
@@ -428,7 +430,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Eastern Services** - For the business domain and requirements
 - **Ultralytics** - For YOLOv8 framework
 - **Groq** - For fast LLM inference
-- **Cohere** - For embeddings API
+- **HuggingFace** - For Sentence Transformers embeddings (FREE, no rate limits)
 - **Hugging Face** - For deployment platform
 
 ---
