@@ -21,6 +21,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+# Import document loading and embedding functions from chatbot_core
+from chatbot_core import (
+    load_documents_from_github,
+    create_chunks_from_documents,
+    generate_and_store_embeddings,
+    setup_pgvector_table,
+    GITHUB_REPO_URL,
+    DATA_FILES,
+    transliterate_urdu_to_roman,
+    URDU_TO_ROMAN
+)
+
 # ============================================================================
 # GLOBAL VARIABLES - Initialize as None
 # ============================================================================
@@ -33,6 +45,7 @@ ConversationHistory = None
 cohere_client = None
 llm = None
 pest_detector = None
+hf_embeddings = None  # HuggingFace embeddings model (replaces Cohere for queries)
 
 # ============================================================================
 # REQUEST/RESPONSE MODELS
@@ -138,19 +151,28 @@ def init_databases():
         engine = None
 
 def init_ai_clients():
-    """Initialize Cohere, Groq, and YOLOv8."""
-    global cohere_client, llm, pest_detector
+    """Initialize HuggingFace Embeddings, Groq, and YOLOv8."""
+    global cohere_client, llm, pest_detector, hf_embeddings
     
     COHERE_API_KEY = os.getenv('COHERE_API_KEY')
     GROQ_API_KEY = os.getenv('GROQ_API_KEY')
     
     print("[*] Initializing AI clients...")
     
-    # Cohere
+    # HuggingFace Embeddings (FREE, NO RATE LIMITS - runs locally)
+    try:
+        from sentence_transformers import SentenceTransformer
+        hf_embeddings = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        print("[OK] HuggingFace Embeddings initialized (all-MiniLM-L6-v2)!")
+    except Exception as e:
+        print(f"[WARN] HuggingFace Embeddings failed: {e}")
+        hf_embeddings = None
+    
+    # Cohere (kept as backup, but not used for queries anymore)
     try:
         import cohere
         cohere_client = cohere.Client(COHERE_API_KEY)
-        print("[OK] Cohere initialized!")
+        print("[OK] Cohere initialized (backup only)!")
     except Exception as e:
         print(f"[WARN] Cohere failed: {e}")
         cohere_client = None
@@ -177,31 +199,123 @@ def init_ai_clients():
         print(f"[WARN] YOLOv8 failed: {e}")
         pest_detector = None
 
-def check_embeddings():
-    """Check embeddings count."""
+def check_embeddings_hf():
+    """Check HuggingFace embeddings count (384 dimensions)."""
     global engine
     if not engine:
         return 0
     try:
         from sqlalchemy import text
         with engine.connect() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS document_embeddings (
-                    id SERIAL PRIMARY KEY,
-                    chunk_text TEXT NOT NULL,
-                    embedding vector(1024),
-                    metadata JSONB,
-                    created_at TIMESTAMP DEFAULT NOW()
-                );
+            # Check if HF embeddings table exists and has data
+            result = conn.execute(text("""
+                SELECT COUNT(*) FROM information_schema.tables 
+                WHERE table_name = 'document_embeddings_hf';
             """))
-            conn.commit()
-            result = conn.execute(text("SELECT COUNT(*) FROM document_embeddings;"))
+            table_exists = result.fetchone()[0] > 0
+            
+            if not table_exists:
+                print("[*] Creating HuggingFace embeddings table (384 dimensions)...")
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS document_embeddings_hf (
+                        id SERIAL PRIMARY KEY,
+                        chunk_text TEXT NOT NULL,
+                        embedding vector(384),
+                        metadata JSONB,
+                        created_at TIMESTAMP DEFAULT NOW()
+                    );
+                """))
+                conn.commit()
+                print("[OK] HuggingFace embeddings table created!")
+                return 0
+            
+            result = conn.execute(text("SELECT COUNT(*) FROM document_embeddings_hf;"))
             count = result.fetchone()[0]
-            print(f"[OK] Found {count} embeddings")
+            print(f"[OK] Found {count} HuggingFace embeddings")
             return count
     except Exception as e:
-        print(f"[WARN] Embeddings check failed: {e}")
+        print(f"[WARN] HF Embeddings check failed: {e}")
         return 0
+
+def load_and_generate_embeddings_hf():
+    """Load documents from GitHub and generate embeddings using HuggingFace (FREE, NO RATE LIMITS)."""
+    global engine, hf_embeddings
+    
+    print("[*] load_and_generate_embeddings_hf() called")
+    print(f"[*] engine is None: {engine is None}")
+    print(f"[*] hf_embeddings is None: {hf_embeddings is None}")
+    
+    if not engine or not hf_embeddings:
+        print("[WARN] Cannot generate embeddings - missing database or HuggingFace model")
+        return False
+    
+    try:
+        print("[*] Loading documents from GitHub...")
+        documents = load_documents_from_github(GITHUB_REPO_URL, DATA_FILES)
+        
+        if not documents:
+            print("[WARN] No documents loaded from GitHub")
+            return False
+        
+        print(f"[OK] Loaded {len(documents)} documents")
+        
+        # Create chunks
+        print("[*] Creating chunks...")
+        chunks = create_chunks_from_documents(documents)
+        
+        if not chunks:
+            print("[WARN] No chunks created")
+            return False
+        
+        print(f"[OK] Created {len(chunks)} chunks from {len(documents)} documents")
+        
+        # Generate and store embeddings using HuggingFace
+        print("[*] Generating embeddings with HuggingFace (this may take a minute)...")
+        
+        from sqlalchemy import text
+        batch_size = 50
+        total_embedded = 0
+        
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i + batch_size]
+            batch_texts = [chunk['text'] for chunk in batch]
+            
+            print(f"   Processing batch {i//batch_size + 1}/{(len(chunks)-1)//batch_size + 1}...")
+            
+            # Generate embeddings with HuggingFace (FREE, NO RATE LIMITS!)
+            embeddings_batch = hf_embeddings.encode(batch_texts).tolist()
+            
+            # Store in database
+            raw_conn = engine.raw_connection()
+            try:
+                cursor = raw_conn.cursor()
+                
+                for chunk, embedding in zip(batch, embeddings_batch):
+                    embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+                    metadata_json = json.dumps(chunk['metadata'])
+                    
+                    cursor.execute("""
+                        INSERT INTO document_embeddings_hf (chunk_text, embedding, metadata)
+                        VALUES (%s, %s::vector, %s::jsonb)
+                    """, (chunk['text'], embedding_str, metadata_json))
+                    
+                    total_embedded += 1
+                
+                raw_conn.commit()
+                cursor.close()
+            finally:
+                raw_conn.close()
+            
+            print(f"   [OK] Embedded {total_embedded}/{len(chunks)} chunks")
+        
+        print(f"[OK] All {total_embedded} embeddings generated and stored with HuggingFace!")
+        return True
+            
+    except Exception as e:
+        import traceback
+        print(f"[WARN] Error in load_and_generate_embeddings: {e}")
+        print(f"[WARN] Traceback: {traceback.format_exc()}")
+        return False
 
 # ============================================================================
 # LANGUAGE DETECTION
@@ -230,21 +344,73 @@ def detect_language(text):
 # RETRIEVAL FUNCTION
 # ============================================================================
 def retrieve_similar_chunks(query, k=3):
-    """Retrieve similar chunks from PGVector."""
-    global cohere_client, engine
+    """Retrieve similar chunks from PGVector using HuggingFace embeddings (FREE, NO RATE LIMITS)."""
+    global hf_embeddings, engine
     
-    if not cohere_client or not engine:
+    if not hf_embeddings or not engine:
+        print("[WARN] Missing hf_embeddings or engine for retrieval")
         return []
     
     try:
-        # Generate embedding
-        query_response = cohere_client.embed(
-            texts=[query],
-            model='embed-english-v3.0',
-            input_type='search_query'
-        )
-        query_embedding = query_response.embeddings[0]
+        # Transliterate Urdu to Roman/English for better matching
+        search_query = transliterate_urdu_to_roman(query)
+        
+        # Always check for Urdu keywords and add English equivalents for better matching
+        urdu_keywords_map = {
+            'ریٹ': 'rate price cost',
+            'قیمت': 'price rate cost',
+            'دیمک': 'termite deemak treatment wood',
+            'کھٹمل': 'bed bug bedbug treatment mattress',
+            'مچھر': 'mosquito control dengue',
+            'چوہے': 'rat rodent control mouse',
+            'چوہا': 'rat rodent control mouse',
+            'سروس': 'service services offer',
+            'خدمات': 'service services offer',
+            'علاج': 'treatment control service',
+            'گارنٹی': 'guarantee warranty',
+            'ضمانت': 'guarantee warranty',
+            'بکنگ': 'booking appointment schedule',
+            'کتنے': 'how many days time duration',
+            'کتنا': 'how much price cost',
+            'کتنی': 'how much price cost',
+            'دن': 'days time duration',
+            'وقت': 'time duration',
+            'کب': 'when time',
+            'کیسے': 'how process method',
+            'کیا': 'what which',
+            'کون': 'which what',
+            'گھر': 'home house residential',
+            'مکان': 'home house residential',
+            'دفتر': 'office commercial',
+            'کاروبار': 'business commercial',
+            'چیونٹی': 'ant ants control',
+            'کاکروچ': 'cockroach roach control',
+            'کیڑے': 'pest insects bugs',
+            'سپرے': 'spray treatment chemical',
+            'کیمیکل': 'chemical safe treatment',
+            'محفوظ': 'safe safety',
+            'فیومیگیشن': 'fumigation treatment',
+        }
+        enhanced_terms = []
+        for urdu_word, english_terms in urdu_keywords_map.items():
+            if urdu_word in query:
+                enhanced_terms.append(english_terms)
+        
+        # Add enhanced terms to search query
+        if enhanced_terms:
+            search_query = ' '.join(enhanced_terms) + ' ' + search_query
+            print(f"[*] Enhanced with keywords: {' '.join(enhanced_terms)}")
+        
+        print(f"[*] Original query: {query}")
+        print(f"[*] Transliterated query: {search_query}")
+        
+        # Generate embedding using HuggingFace (FREE, NO RATE LIMITS!)
+        query_embedding = hf_embeddings.encode(search_query).tolist()
         query_embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+        print(f"[OK] Generated embedding with HuggingFace (dim={len(query_embedding)})")
+        
+        # Retrieve more chunks for re-ranking
+        retrieval_k = k + 2
         
         # Search
         raw_conn = engine.raw_connection()
@@ -252,27 +418,83 @@ def retrieve_similar_chunks(query, k=3):
             cursor = raw_conn.cursor()
             cursor.execute("""
                 SELECT chunk_text, metadata, 1 - (embedding <=> %s::vector) as similarity
-                FROM document_embeddings
+                FROM document_embeddings_hf
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
-            """, (query_embedding_str, query_embedding_str, k))
+            """, (query_embedding_str, query_embedding_str, retrieval_k))
             
             rows = cursor.fetchall()
             cursor.close()
             
             documents = []
             for row in rows:
-                documents.append({
+                doc = {
                     'page_content': row[0],
                     'metadata': row[1] if isinstance(row[1], dict) else json.loads(row[1]) if row[1] else {},
                     'similarity': row[2]
-                })
+                }
+                documents.append(doc)
             
-            return documents
+            print(f"[*] Retrieved {len(documents)} documents")
+            
+            # Keyword-based re-ranking for better relevance
+            query_lower = search_query.lower()
+            
+            pest_keywords = {
+                'deemak': ['termite', 'deemak', 'white ant', 'wood'],
+                'termite': ['termite', 'deemak', 'white ant', 'wood'],
+                'khatmal': ['bed bug', 'khatmal', 'bedbug', 'mattress'],
+                'bed': ['bed bug', 'khatmal', 'bedbug', 'mattress'],
+                'bug': ['bed bug', 'khatmal', 'bedbug', 'mattress'],
+                'cockroach': ['cockroach', 'roach', 'kitchen'],
+                'mosquito': ['mosquito', 'malaria', 'dengue', 'machar', 'machhar'],
+                'machar': ['mosquito', 'malaria', 'dengue', 'machar', 'machhar'],
+                'rat': ['rat', 'rodent', 'mouse', 'chuhay', 'chooha'],
+                'chuhay': ['rat', 'rodent', 'mouse', 'chuhay', 'chooha'],
+                'ant': ['ant', 'chiti', 'sugar ant'],
+                'guarantee': ['guarantee', 'warranty', 'guaranteed', 'assurance'],
+                'rate': ['rate', 'price', 'cost', 'pricing', 'charges', 'rupees', 'rs', 'qeemat'],
+                'price': ['rate', 'price', 'cost', 'pricing', 'charges', 'rupees', 'rs', 'qeemat'],
+                'service': ['service', 'services', 'provide', 'offer', 'ilaj', 'treatment'],
+                'discount': ['discount', 'offer', 'package', 'deal', 'special'],
+                'booking': ['booking', 'book', 'appointment', 'schedule'],
+                'appointment': ['booking', 'book', 'appointment', 'schedule'],
+            }
+            
+            query_relevant_keywords = []
+            for key, keywords in pest_keywords.items():
+                if key in query_lower:
+                    query_relevant_keywords.extend(keywords)
+            
+            query_relevant_keywords = list(set(query_relevant_keywords))
+            
+            # Re-rank documents based on keyword matches
+            if query_relevant_keywords:
+                for doc in documents:
+                    doc_text_lower = doc['page_content'].lower()
+                    keyword_matches = sum(1 for kw in query_relevant_keywords if kw in doc_text_lower)
+                    
+                    if keyword_matches > 0:
+                        boost = min(0.5, keyword_matches * 0.2)
+                        doc['similarity'] = min(1.0, doc['similarity'] + boost)
+                        doc['keyword_matches'] = keyword_matches
+                    else:
+                        doc['similarity'] = doc['similarity'] * 0.8
+                        doc['keyword_matches'] = 0
+                
+                documents.sort(key=lambda x: x['similarity'], reverse=True)
+            
+            # Log top results for debugging
+            if documents:
+                print(f"[*] Top result similarity: {documents[0]['similarity']:.3f}")
+            
+            return documents[:k]
         finally:
             raw_conn.close()
     except Exception as e:
+        import traceback
         print(f"[FAIL] Retrieval error: {e}")
+        print(f"[FAIL] Traceback: {traceback.format_exc()}")
         return []
 
 # ============================================================================
@@ -406,9 +628,25 @@ async def lifespan(app: FastAPI):
             print(f"[WARN] AI clients init failed: {e}")
         
         try:
-            check_embeddings()
+            print("[*] Checking HuggingFace embeddings (FREE, NO RATE LIMITS)...")
+            # Check and generate HuggingFace embeddings if needed
+            embedding_count = check_embeddings_hf()
+            print(f"[*] HF Embedding count: {embedding_count}")
+            
+            if embedding_count == 0:
+                print("[*] No HuggingFace embeddings found. Starting document loading and embedding generation...")
+                # Try to load and generate embeddings with HuggingFace
+                success = load_and_generate_embeddings_hf()
+                if success:
+                    print("[OK] HuggingFace embeddings generated successfully!")
+                else:
+                    print("[WARN] HuggingFace embedding generation returned False")
+            else:
+                print(f"[OK] {embedding_count} HuggingFace embeddings ready for RAG (NO RATE LIMITS!)")
         except Exception as e:
-            print(f"[WARN] Embeddings check failed: {e}")
+            import traceback
+            print(f"[WARN] HF Embeddings check/generation failed: {e}")
+            print(f"[WARN] Traceback: {traceback.format_exc()}")
         
         # Mark as initialized even if some components failed
         chatbot_initialized = True
@@ -475,7 +713,8 @@ async def health_check():
         "components": {
             "redis": redis_client is not None,
             "database": engine is not None,
-            "cohere": cohere_client is not None,
+            "hf_embeddings": hf_embeddings is not None,  # HuggingFace (FREE, NO RATE LIMITS)
+            "cohere": cohere_client is not None,  # Backup only
             "llm": llm is not None,
             "yolov8": pest_detector is not None
         }
